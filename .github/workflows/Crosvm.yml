@@ -1,0 +1,77 @@
+name: build-crosvm-a05s-arm64
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  build-arm64:
+    runs-on: ubuntu-24.04
+
+    env:
+      CC_aarch64_unknown_linux_gnu: aarch64-linux-gnu-gcc
+      CXX_aarch64_unknown_linux_gnu: aarch64-linux-gnu-g++
+      AR_aarch64_unknown_linux_gnu: aarch64-linux-gnu-ar
+      CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+      PKG_CONFIG_ALLOW_CROSS: "1"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-unknown-linux-gnu
+
+      - name: Enable arm64 architecture
+        run: |
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get install -y \
+            bindgen \
+            build-essential \
+            clang \
+            gcc-aarch64-linux-gnu \
+            g++-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            libasound2-dev:arm64 \
+            libcap-dev:arm64 \
+            libdbus-1-dev:arm64 \
+            libdrm-dev:arm64 \
+            libepoxy-dev:arm64 \
+            libssl-dev:arm64 \
+            libwayland-bin \
+            libwayland-dev:arm64 \
+            pkg-config \
+            protobuf-compiler \
+            python3 \
+            wayland-protocols
+
+      - name: Sync submodules
+        run: git submodule update --init --recursive
+
+      - name: Configure Cargo cross-compilation
+        run: |
+          mkdir -p "${CARGO_HOME:-$HOME/.cargo}"
+          cat .cargo/config.debian.toml >> "${CARGO_HOME:-$HOME/.cargo}/config.toml"
+
+      - name: Build minimal headless crosvm for ARM64
+        run: |
+          cargo build --release \
+            --target aarch64-unknown-linux-gnu \
+            --no-default-features \
+            --features "qcow,android-sparse"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: crosvm-aarch64-linux-gnu
+          path: target/aarch64-unknown-linux-gnu/release/crosvm
